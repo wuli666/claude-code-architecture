@@ -1,6 +1,8 @@
 # Claude Code 源码架构深度分析
 
-> 基于 `@anthropic-ai/claude-code@2.1.88` npm 包 sourcemap 还原源码的逆向分析
+[![linux.do](https://img.shields.io/badge/linux.do-huo0-blue?logo=linux&logoColor=white)](https://linux.do)
+
+> 基于 [`@anthropic-ai/claude-code@2.1.88`](https://www.npmjs.com/package/@anthropic-ai/claude-code) sourcemap 还原源码的架构分析，源码还原来自 [ChinaSiro/claude-code-sourcemap](https://github.com/ChinaSiro/claude-code-sourcemap)
 
 ---
 
