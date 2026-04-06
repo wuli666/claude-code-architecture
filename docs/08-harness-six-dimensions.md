@@ -1,6 +1,6 @@
-# 08 - OpenHarness 六维评估
+# 08 - Harness 六维评估
 
-> 用 AI Agent Harness 的六大核心维度，重新审视 Claude Code 的架构成熟度
+> 以 AI Agent Harness 的六大核心维度评估 Claude Code 的架构成熟度
 
 ---
 
