@@ -31,7 +31,7 @@
 
 这是最直观的成本：上下文窗口是稀缺资源，工具 schema 占满了，真正的"工作记忆"（用户代码、日志、对话历史）就被挤压。
 
-**对策（CC 实现）**：deferred 工具只暴露 name + 1 行 desc（约 30 token/个），完整 schema 按需加载。详见 §四。
+**对策（CC 实现）**：deferred 工具**只暴露 name**（约 5-10 token/个，连描述都不给），完整 schema 按需加载。详见 §四。
 
 ### 2.2 Latency 冷启动 — 首次发现工具的延迟
 
@@ -209,7 +209,31 @@ mcp__slack__list_messages
 </available-deferred-tools>
 ```
 
-每条只有 name + 1 行 desc，约 30 token/个。模型看到这个列表知道"这些工具存在，但要用必须先 fetch"。
+**只有工具名，不带任何描述或参数 schema**。每个约 5-10 token。
+
+源码 `tools/ToolSearchTool/prompt.ts:115-117`：
+
+```typescript
+export function formatDeferredToolLine(tool: Tool): string {
+  return tool.name   // 就这一行
+}
+```
+
+注释 `prompt.ts:111-113` 透露了背景：CC 团队做过 A/B 实验（`exp_xenhnnmn0smrx4`），在名单里加 `searchHint`（简短描述）对模型工具发现能力**没有提升**，2026 年 3 月 21 日下线了。所以最终就是裸 name 列表。
+
+模型只能靠工具名猜功能，要知道细节必须调 ToolSearch。这是个比"name + desc"更激进的"信任模型命名直觉"策略——也意味着**工具命名规范化比写 description 更重要**。`mcp__server__action` 这种结构化命名比自然语言描述更有效，因为模型在 ToolSearch 之前**只有名字可以判断**。
+
+#### 三个位置看 schema 到底在哪
+
+很容易混淆"deferred 工具有没有 schema"——答案要分三个位置：
+
+| 工具状态 | 客户端代码 registry | tools 数组（API 请求） | system reminder（LLM 看到） | messages 流 |
+|---|---|---|---|---|
+| **Eager** | ✓ 完整 schema | ✓ 完整 schema | — | — |
+| **Deferred 未加载** | ✓ 完整 schema | ✗ | ✓ 仅 name | ✗ |
+| **Deferred 已加载** | ✓ 完整 schema | ✗ | ✓ 仅 name | ✓ 完整 schema（server 展开） |
+
+**关键点**：Schema 在客户端代码里**永远存在**（Tool 对象的 `input_schema` 字段），但 LLM **看不到**——除非被加载到上下文。`ToolSearch` 是把"知道工具名"升级为"能调用工具"的唯一通道。
 
 #### 形态 2：加载 — schema 进 messages 流，不进 tools 数组
 
@@ -505,15 +529,15 @@ Cache 冷启动:
 ### 8.3 上下文形状变迁
 
 ```
-turn 1: [system+名单 2k][tools 12k][msg: 用户问题 50]
-turn 2: [system+名单 2k][tools 12k][msg: + datadog_query_metrics 调用]
-turn 3: [system+名单 2k][tools 12k][msg: + ToolSearch + tool_ref +
+turn 1: [system+名单 ~1.3k][tools 12k][msg: 用户问题 50]
+turn 2: [system+名单 ~1.3k][tools 12k][msg: + datadog_query_metrics 调用]
+turn 3: [system+名单 ~1.3k][tools 12k][msg: + ToolSearch + tool_ref +
                                           server展开 functions(postgres_query) 600 +
                                           assistant 调用 + 结果]
-turn 4: [system+名单 2k][tools 12k][msg: + 同上结构，加 postgres_explain 600]
-turn 5: [system+名单 2k][tools 12k][msg: + github_list_prs 700]
-turn 6: [system+名单 2k][tools 12k][msg: + slack post]
-turn 7: [system+名单 2k][tools 12k][msg: + pagerduty ack]
+turn 4: [system+名单 ~1.3k][tools 12k][msg: + 同上结构，加 postgres_explain 600]
+turn 5: [system+名单 ~1.3k][tools 12k][msg: + github_list_prs 700]
+turn 6: [system+名单 ~1.3k][tools 12k][msg: + slack post]
+turn 7: [system+名单 ~1.3k][tools 12k][msg: + pagerduty ack]
 
 观察：
   ├─ 第一段 [system+名单] 2k：7 turn 全程不变，长 TTL cache 100% hit
@@ -526,7 +550,7 @@ turn 7: [system+名单 2k][tools 12k][msg: + pagerduty ack]
 ```
 Token 冷启动：
   全 eager：tools 数组 64k token
-  现方案：  tools 数组 12k + 名单 2k = 14k
+  现方案：  tools 数组 12k + 系统主体 ~700 + deferred 名单 ~600 ≈ 13.3k
   节省：    78%（50k token 让出来给对话和日志用）
 
 Latency 冷启动（7 turn 完整事故响应）：
