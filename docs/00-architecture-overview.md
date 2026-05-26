@@ -429,3 +429,4 @@ Git 集成通过 `fs.watchFile` 监视 `.git/HEAD` 等文件：
 | [05 - 扩展系统](./05-extension-system.md) | MCP → Plugins → Skills → DXT |
 | [06 - 终端 UI](./06-terminal-ui-and-state.md) | Ink → 状态 → 输入 → 渲染 → 快捷键 |
 | [07 - 基础设施](./07-infrastructure-and-services.md) | Git → OAuth → LSP → Analytics → Memory |
+| [10 - 上下文经济学](./10-context-economics.md) | Cache / ToolSearch / 延迟加载的合一架构 |

@@ -502,3 +502,9 @@ Write → 必须先 Read → 过期检测同上
 新增工具忘记设置 isReadOnly?         → 需要权限（安全）
 新增工具忘记设置 checkPermissions?   → 默认 allow（委托给通用系统）
 ```
+
+---
+
+## 延伸阅读
+
+关于 ToolSearch / deferred 工具加载背后的 prompt cache 经济学（为什么这样设计、cache_control breakpoint、TTL 选择、与 Codex 的对照），见 [10 - 上下文经济学](./10-context-economics.md)。
