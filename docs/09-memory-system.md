@@ -128,7 +128,7 @@ Integration tests must hit a real database, not mocks.
 ```
 
 - 每行一条，不超过 150 字符
-- 上限 200 行（超过会被截断）
+- 上限 200 行 / 25KB（`MAX_ENTRYPOINT_LINES=200`、`MAX_ENTRYPOINT_BYTES=25_000`，memdir.ts:34-37；字节上限专挡"行数没超、但长行把索引撑到 ~197KB"那种，超限截断）
 - **始终全量注入** system prompt
 - 不存正文，只存指针
 
@@ -482,10 +482,16 @@ Memory (saved 47 days ago): project_release_freeze.md
 除了每次 turn 结束时的 extraction，还有一个更慢的后台整合机制：
 
 ```
-触发条件（全部满足）:
-  ├─ 距上次整合 ≥ 24 小时
-  ├─ 自上次整合后 ≥ 5 个新会话
-  └─ PID 文件锁可获取（防并发）
+前置开关（isGateOpen）: 非 KAIROS + 非远程 + auto memory 启用 + autoDream 启用
+
+触发条件（4 道门，全满足才跑，autoDream.ts）:
+  ├─ ① 时间门: 距上次整合 ≥ 24 小时（minHours=24，:64）
+  ├─ ② 会话门: 自上次整合后 mtime 更新的 transcript ≥ 5 个（minSessions=5，:65）
+  ├─ ③ 扫描节流: 两次会话扫描间隔 ≥ 10 分钟（SESSION_SCAN_INTERVAL_MS，:56）
+  │      └─ 为何需要它: "时间门过了但会话门没过"时锁 mtime 不前进，时间门会每 turn 都过 → 不节流就每轮重扫文件系统
+  └─ ④ 锁门: .consolidate-lock 可获取（consolidationLock.ts）
+         ├─ 锁文件 mtime **就是** lastConsolidatedAt；body 写持有者 PID
+         └─ HOLDER_STALE_MS=1 小时：超 1h 即便 PID 仍活也判过期（防 PID 复用 + 崩溃恢复）
 
 整合行为:
   ├─ 读取多个会话的记忆
@@ -501,7 +507,41 @@ Memory (saved 47 days ago): project_release_freeze.md
 
 ---
 
-## 十、完整数据流总览
+## 十、Session Memory — 单会话压缩续接（和 AutoMem 两回事，别混）
+
+前九节讲的 AutoMem（User Memory）是**跨会话**的长期记忆。CC 里还有一套**单会话**的记忆叫 Session Memory——名字像，存储、加载、用途全不同。
+
+**源码**: `services/SessionMemory/sessionMemory.ts`、`services/compact/sessionMemoryCompact.ts`
+
+### 10.1 AutoMem vs Session Memory
+
+| | AutoMem（User Memory，§一~§九） | Session Memory |
+|---|---|---|
+| 持久性 | 跨会话 | 仅当前会话 |
+| 存储 | `~/.claude/projects/<root>/memory/*.md`（多文件 + MEMORY.md 索引） | 单文件（`getSessionMemoryPath()`，按 session id） |
+| 加载到哪 | system prompt（索引）+ attachment（选中正文） | **compact 摘要**里 |
+| 谁来选 | Sonnet sideQuery 按 description 选 | 不选，整份用于续接 |
+| 用途 | 跨会话"越用越懂你" | 跨 **compact** 的上下文连续性 |
+
+### 10.2 sessionMemoryCompact — 用 session memory 省掉一次摘要 LLM 调用
+
+这是 §03 文档 auto-compact（§3.4）的一个**前置优化**：autoCompact 真正调 LLM 写摘要之前，先看本会话攒的 session memory 够不够；够就直接拿来当摘要，**省掉那次 LLM 调用**。
+
+```
+autoCompact 调 LLM 写摘要前，先查 session memory（DEFAULT_SM_COMPACT_CONFIG）:
+  ├─ minTokens            ≥ 10,000  token    （内容够多才值得用）
+  ├─ minTextBlockMessages ≥ 5       条文本消息
+  └─ maxTokens            ≤ 40,000  token    （保留内容的硬上限）
+
+  够 → 用 session memory 当摘要，0 次 LLM 调用
+  不够 → 回退到 §03 §3.4 的 LLM 全量摘要
+```
+
+把"便宜的先跑"推到了摘要本身：能用现成的 session memory 就别花钱调模型。
+
+---
+
+## 十一、完整数据流总览
 
 ```
 ═══════════════ 写入路径 ═══════════════
@@ -549,7 +589,7 @@ Dream agent
 
 ---
 
-## 十一、设计模式总结
+## 十二、设计模式总结
 
 | 模式 | 实现 | 为什么 |
 |------|------|--------|

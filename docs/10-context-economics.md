@@ -195,6 +195,8 @@ return {
 
 ### 4.3 真相 — 三种存在形态
 
+> ⚠️ **【本节有已知错误，先读 §11.3】** 下文"从头到尾不进 tools 数组"以及"形态 2：schema 进 messages 流，不进 tools 数组"的说法**不准确**：deferred 工具一旦经 ToolSearch 发现，**会进 tools 数组**（带 `defer_loading: true`）。修正后的完整路径与三态表见 **§11.3**（源码实证 `claude.ts:1160-1167` + `api.ts:224-225`）。本节原文保留仅作"错误直觉"对照。
+
 deferred 工具的"存在感"以三种形式存在，**从头到尾不进 tools 数组**：
 
 #### 形态 1：未加载 — 只在 system reminder 里以 name 出现
