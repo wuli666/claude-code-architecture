@@ -51,6 +51,8 @@
 
 ### 三级 Compaction 详解
 
+> 完整每轮管线还含 `tool_result_budget`（大结果落盘，跑最前）和 `snip`（裁中间）两层，此处只列三级摘要梯；详见 §03 §三（§3.2 管线图、§3.13）。
+
 ```
 Token 使用量增长 →
 
@@ -79,7 +81,7 @@ Token 使用量增长 →
 ```
 Session Memory（短期）
   ├─ 当前对话的实时笔记
-  ├─ 触发: Token ≥ 10,000 且距上次 ≥ 5,000
+  ├─ 用于 compact 的门槛: ≥10K token + ≥5 条文本消息，上限 40K（sessionMemoryCompact）
   └─ 分叉子 Agent 后台提取
 
 Auto-Memory（中期）
@@ -88,13 +90,13 @@ Auto-Memory（中期）
 
 Dream 整合（长期）
   ├─ 跨会话记忆整合优化
-  ├─ 24h + 5 session 双门控 + PID 锁
+  ├─ 4 门控: 24h + 5 session + 扫描节流(10min) + .consolidate-lock(mtime=lastConsolidatedAt, 1h 过期)
   └─ 失败时 rollbackConsolidationLock() 回退
 ```
 
 ### 缺口
 
-- Memory 检索是纯文件名/关键词匹配（`MEMORY.md` 索引），无向量语义检索
+- Memory 召回是 Sonnet sideQuery 语义选择（读 name+description，非关键词/向量；§09 §6.3）；局限：只看 frontmatter 不看正文、side-query 失败直接返回空（无关键词兜底），description 写差易漏召回
 - 记忆条目多时可能出现相关记忆不被召回
 - 无记忆衰减机制（旧记忆不会降低优先级）
 
